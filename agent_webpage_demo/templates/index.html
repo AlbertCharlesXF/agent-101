@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elegant AI Chat Interface</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.0.2/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.3.8/purify.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap');
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            color: #e7e7e7;
+        }
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .chat-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .chat-header h1 {
+            font-weight: 300;
+            letter-spacing: 2px;
+            color: #fff;
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+        }
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+        .message {
+            margin-bottom: 20px;
+            padding: 12px 18px;
+            border-radius: 20px;
+            max-width: 80%;
+            animation: fadeIn 0.5s ease-out;
+            line-height: 1.4;
+            overflow-wrap: break-word;
+        }
+        .user-message {
+            background: linear-gradient(135deg, #4facfe, #00f2fe);
+            align-self: flex-end;
+            margin-left: auto;
+            box-shadow: 0 4px 15px rgba(79, 172, 254, 0.4);
+            color: #000;
+        }
+        .ai-message {
+            background: linear-gradient(135deg, #8E2DE2, #4A00E0);
+            align-self: flex-start;
+            box-shadow: 0 4px 15px rgba(142, 45, 226, 0.4);
+        }
+        .chat-input {
+            display: flex;
+            margin-top: 20px;
+        }
+        .chat-input select, .chat-input input, .chat-input button {
+            padding: 15px;
+            border: none;
+            border-radius: 30px;
+            font-size: 16px;
+        }
+        .chat-input select {
+            margin-right: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            cursor: pointer;
+        }
+        .chat-input input {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            transition: all 0.3s ease;
+        }
+        .chat-input input:focus {
+            outline: none;
+            background: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
+        }
+        .chat-input button {
+            margin-left: 10px;
+            background: linear-gradient(135deg, #FF416C, #FF4B2B);
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            letter-spacing: 1px;
+        }
+        .chat-input button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 7px 14px rgba(255, 65, 108, 0.4);
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .glow {
+            animation: glow 3s ease-in-out infinite alternate;
+        }
+        @keyframes glow {
+            from { text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #fff, 0 0 20px #FF4B2B, 0 0 35px #FF4B2B; }
+            to { text-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #fff, 0 0 40px #FF416C, 0 0 70px #FF416C; }
+        }
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Markdown Styles */
+        .ai-message p, .ai-message ul, .ai-message ol {
+            margin-bottom: 10px;
+        }
+        .ai-message h1, .ai-message h2, .ai-message h3, .ai-message h4, .ai-message h5, .ai-message h6 {
+            margin-top: 20px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .ai-message code {
+            background-color: rgba(255, 255, 255, 0.1);
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .ai-message pre {
+            background-color: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+        .ai-message pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        .ai-message table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .ai-message th, .ai-message td {
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 8px;
+            text-align: left;
+        }
+        .ai-message th {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        .ai-message a {
+            color: #4facfe;
+            text-decoration: none;
+        }
+        .ai-message a:hover {
+            text-decoration: underline;
+        }
+        .ai-message img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .ai-message blockquote {
+            border-left: 4px solid rgba(255, 255, 255, 0.3);
+            padding-left: 10px;
+            margin-left: 0;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1 class="glow">AI Chat Interface</h1>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+            <div class="message ai-message">
+                Hello! How can I assist you today?
+            </div>
+        </div>
+        <div class="chat-input">
+            <select id="modelSelect">
+                <option value="llama3">llama3</option>
+                <option value="gemma2">gemma2</option>
+                <option value="qwen2">qwen2</option>
+                <option value="phi3">phi3</option>
+            </select>
+            <input type="text" id="userInput" placeholder="Type your message here...">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        const socket = io('http://localhost:3000');
+        let currentResponse = null;
+        let currentResponseContent = '';
+        let isStreaming = false;
+
+        marked.setOptions({
+            breaks: true,
+            gfm: true
+        });
+
+        function sendMessage() {
+            const userInput = document.getElementById('userInput');
+            const modelSelect = document.getElementById('modelSelect');
+            const chatMessages = document.getElementById('chatMessages');
+            
+            if (userInput.value.trim() === '') return;
+            
+            // Add user message
+            const userMessage = document.createElement('div');
+            userMessage.className = 'message user-message';
+            userMessage.textContent = userInput.value;
+            chatMessages.appendChild(userMessage);
+            
+            // Create AI message container
+            currentResponse = document.createElement('div');
+            currentResponse.className = 'message ai-message';
+            chatMessages.appendChild(currentResponse);
+            currentResponseContent = '';
+            isStreaming = true;
+
+            // Send message to server
+            socket.emit('ask_question', {
+                input: userInput.value,
+                model: modelSelect.value
+            });
+            
+            // Clear input
+            userInput.value = '';
+            
+            // Scroll to bottom
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Receive stream from server
+        socket.on('question_answer', function(data) {
+            if (currentResponse && isStreaming) {
+                currentResponseContent += data.content;
+                updateResponseContent();
+            }
+        });
+
+        function updateResponseContent() {
+            const renderedContent = DOMPurify.sanitize(marked.parse(currentResponseContent));
+            currentResponse.innerHTML = renderedContent;
+            console.log(renderedContent);
+            document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
+        }
+
+        // Signal the end of streaming
+        socket.on('stream_end', function() {
+            isStreaming = false;
+            updateResponseContent(); // Final update to ensure all content is rendered
+        });
+
+        // Allow sending message with Enter key
+        document.getElementById('userInput').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
