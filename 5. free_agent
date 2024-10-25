@@ -1,0 +1,195 @@
+from tools.llm_api import *
+from tools.code_interpreter import *
+from tools.json_tool import *
+from tools.system_operations import SystemOperations as so
+from tools.pdf_reader import *
+from tools.search_bing import *
+from tools.function_call_toolbox import extract_params_to_json, get_func_name
+from tools.text2word import *
+from tools.search_arxiv import *
+from tools.download_arxiv_papers import *
+
+from prompts.agent_prompts import (
+    FREE_WILL_AI_DEVISE_PLAN_PROMPT,
+    FREE_WILL_AI_SYSTEM_PROMPT,
+    FREE_WILL_AI_TOOL_SYSTEM_PROMPT,
+    REPEAT_NOTICE
+)
+
+# 工具配置
+from tools_configs import (
+    PDF_TEXT_EXTRACT_TOOL, 
+    BING_SEARCH_TOOL, 
+    ANALYZE_TOOL,
+    ARXIV_SEARCH_TOOL,
+    ARXIV_DOWNLOAD_TOOL
+)
+
+# 工具：联网搜索
+class SearchBing():
+    def execute(self, **kwargs):
+        print("Using tool: SearchBing...")
+        # 提取关键词
+        keyword = kwargs.get('query', 'Python')
+        max_pages = int(kwargs.get('max_pages', 1))
+        max_results = int(kwargs.get('max_result', 5))
+        print(f"关键词：{keyword} 页数：{max_pages} 结果数：{max_results}")
+        result = bing_searched_result(keyword, max_pages=max_pages, max_results=max_results)
+        print(f"搜索总字数：{len(result)}")
+        return result
+
+# arxiv论文搜索
+class SearchArxiv():
+    def execute(self, **kwargs):
+        print("Using tool: SearchArxiv...")
+        # 提取关键词
+        keyword = kwargs.get('keyword', 'Agent')
+        max_results = int(kwargs.get('max_results', 5))
+        sort_by = kwargs.get('sort_by', 'relevance')
+        print(f"关键词：{keyword} 结果数：{max_results} 排序：{sort_by}")
+        result = get_arxiv_papers(keyword, max_results=max_results, sort_by=sort_by)
+        print(f"搜索总字数：{len(result)}")
+        return result
+    
+class DownloadArxivPapers():
+    def execute(self, **kwargs):
+        print("Using tool: DownloadArxivPapers...")
+        # 提取关键词
+        keyword = kwargs.get('url', 'Python')
+        folder = kwargs.get('folder', 'files')
+        result = download_arxiv_paper(keyword, folder=folder)
+        llm_info = f"下载已完成,文件地址：{folder}"
+        print(f"总字数：{len(result)}")
+        return llm_info
+    
+class PDFExtractor():
+    def execute(self, **kwargs):
+        print("Using tool: PDFExtractor...")
+        # 提取关键词
+        pdf_path = kwargs.get('pdf_path', '')
+        print(f"PDF路径：{pdf_path}")
+        result = extract_clean_text_from_pdf(pdf_path)
+        llm_info = f"提取已完成,提取结果：{result}"
+        print(f"PDF总字数：{len(result)}")
+        return llm_info
+    
+
+class FreeWillAI():
+    
+    def __init__(self, main_model, tool_model, flash_model):
+        self.main_model = main_model
+        self.tool_model = tool_model
+        self.flash_model = flash_model
+        self.agents = {
+        }
+        self.tools = {
+            "bing_searched_result": SearchBing(),
+            "get_arxiv_papers": SearchArxiv(),
+            "download_arxiv_paper": DownloadArxivPapers(),
+            "extract_clean_text_from_pdf": PDFExtractor(),
+        }
+        self.tools_prompt_config = [
+            PDF_TEXT_EXTRACT_TOOL, 
+            BING_SEARCH_TOOL, 
+            ANALYZE_TOOL,
+            ARXIV_SEARCH_TOOL,
+            ARXIV_DOWNLOAD_TOOL
+        ]
+        self.file_path = "files"
+        so.create_folder(self.file_path)
+        # coding聊天记录
+        self.conversations = [{"role": "system", "content": FREE_WILL_AI_SYSTEM_PROMPT}]
+        self.tool_conversations = [{"role": "system", "content": FREE_WILL_AI_TOOL_SYSTEM_PROMPT}]
+        file_path = "files/example_agent"
+        so.create_folder(file_path)
+
+    def get_conversation_intention_tools(self, question):
+        question = f"{question} \n请使用json告诉我接下来需要使用的工具。"
+        self.tool_conversations.append({"role": "user", "content": question})
+        
+        files = so.extract_file_path_from_folder("files")
+        sys_prompt_latest = FREE_WILL_AI_TOOL_SYSTEM_PROMPT.format(
+            tools=self.tools_prompt_config
+            , files=files
+        )
+        self.tool_conversations[0]["content"] = sys_prompt_latest
+        
+        ans = ""
+        for char in get_llm_answer_converse(self.tool_conversations, model=self.tool_model):
+            ans += char
+            print(char, end="", flush=True)
+        print()
+        self.tool_conversations.append({"role": "assistant", "content": ans})
+        
+        intention_tools = get_json(ans)["tools"]
+        return intention_tools
+    
+    def get_conversation_intention_tools_by_conversation(self):
+        files = so.extract_file_path_from_folder("files")
+        sys_prompt_latest = FREE_WILL_AI_TOOL_SYSTEM_PROMPT.format(
+            tools=self.tools_prompt_config
+            , files=files
+        )
+        
+        self.tool_conversations[0]["content"] = sys_prompt_latest
+        
+        ans = ""
+        for char in get_llm_answer_converse(self.tool_conversations, model=self.tool_model):
+            ans += char
+            print(char, end="", flush=True)
+        print()
+        self.tool_conversations.append({"role": "assistant", "content": ans})
+        
+        intention_tools = get_json(ans)["tools"]
+        return intention_tools
+
+    def devise_work_flow(self, question):
+        self.devise_conversation = [{"role": "system", "content": FREE_WILL_AI_DEVISE_PLAN_PROMPT}]
+        self.devise_conversation.append({"role": "user", "content": question})
+        ans = ""
+        for char in get_llm_answer_converse(self.devise_conversation, model=self.flash_model):
+            ans += char
+            yield char
+        yield "\n"
+        self.conversations.append({"role": "user", "content": question})
+        self.conversations.append({"role": "assistant", "content": ans})
+        self.tool_conversations.append({"role": "user", "content": question})
+        self.tool_conversations.append({"role": "assistant", "content": ans})
+        
+
+    def work_flow(self, question):
+        for char in self.devise_work_flow(question):
+            yield char
+        intention_tools = self.get_conversation_intention_tools("继续。")
+        while "[END]" not in self.tool_conversations[-1]["content"]:
+            for tool_name in intention_tools:
+                self.func_name = get_func_name(tool_name)
+                self.tool_kwargs = json.loads(extract_params_to_json(tool_name))
+                self.tool_kwargs["func_name"] = self.func_name
+                self.tool_kwargs["question"] = question
+                # 如果是文本分析工具
+                if self.func_name == "analyze":
+                    ans = ""
+                    for char in get_llm_answer_converse(self.conversations, model=self.main_model):
+                        yield char
+                        ans += char
+                    yield "\n"
+                    self.conversations.append({"role": "assistant", "content": ans})
+                    self.tool_conversations.append({"role": "assistant", "content": ans})
+                else: 
+                    info = self.tools[self.func_name].execute(**self.tool_kwargs)
+                    llm_info = f"系统检索到以下信息：\n{info}"
+                    self.conversations.append({"role": "user", "content": f"{llm_info}\n\n一句话总结你刚刚做了什么,然后完成我前面的任务：{question}\n{REPEAT_NOTICE}"})
+
+                    ans = ""
+                    for char in get_llm_answer_converse(self.conversations, model=self.main_model):
+                        yield char
+                        ans += char
+                    yield "\n"
+                    self.conversations[-1]["content"] = f"{llm_info}"
+                    self.conversations.append({"role": "assistant", "content": ans})
+                    self.tool_conversations.append({"role": "assistant", "content": ans})
+                    
+            self.tool_conversations.append({"role": "user", "content": "判断我的任务是否完成,如果未完成则继续。如果完成则发送终止信号。注意：你只需要输出json,不需要输出任何其他内容。"})
+            intention_tools = self.get_conversation_intention_tools_by_conversation()
+            self.tool_conversations[-2]["content"] = "继续。"
